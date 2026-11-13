@@ -4,31 +4,19 @@ pipeline {
     stages {
         stage('Test') {
             steps {
-                echo "Running tests"
-                bat 'pip install -r requirements.txt'
-                
-                // Start app in background and redirect output to a log file for debugging
-                bat 'start /B python app.py > app.log 2>&1'
-                
-                // Wait for the server to boot up
-                bat 'ping 127.0.0.1 -n 5 > nul'
-                
-                // Run pytest inside a try/finally block to guarantee cleanup
-                script {
-                    try {
-                        bat 'python -m pytest -v'
-                    } finally {
-                        // Force terminate the background python process so ports/files are released
-                        bat 'taskkill /f /im python.exe || exit 0'
-                    }
+                echo "Running Taskflow backend tests"
+                dir('Taskflow/backend') {
+                    bat 'npm ci'
+                    bat 'npm test'
                 }
             }
         }
 
         stage('Build') {
             steps {
-                echo "Building Docker Image"
-                bat 'docker build -t kubedemoapp:v1 .'
+                echo "Building Taskflow Docker Image"
+                // Builds using the Dockerfile inside Taskflow/backend
+                bat 'docker build -t taskflow-backend:v1 ./Taskflow/backend'
             }
         }
 
@@ -47,30 +35,28 @@ pipeline {
 
         stage('Push Docker Image') {
             steps {
-                echo "Pushing Docker Image"
-                bat 'docker tag kubedemoapp:v1 vanamsanjana9/sample:seleniumtest'
-                bat 'docker push vanamsanjana9/sample:seleniumtest'
+                echo "Pushing Taskflow Docker Image"
+                bat 'docker tag taskflow-backend:v1 vanamsanjana9/taskflow-backend:latest'
+                bat 'docker push vanamsanjana9/taskflow-backend:latest'
             }
         }
 
         stage('Deploy') {
             steps {
-                bat 'kubectl apply -f deployment.yaml --validate=false'
-                bat 'kubectl apply -f service.yaml'
+                echo "Deploying Taskflow to Kubernetes"
+                bat 'kubectl apply -f k8s/mongo.yaml -n default'
+                bat 'kubectl apply -f k8s/backend.yaml -n default'
+                bat 'kubectl apply -f k8s/selenium.yaml -n default'
             }
         }
     }
 
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'Taskflow pipeline completed successfully!'
         }
         failure {
-            echo 'Pipeline failed'
-        }
-        always {
-            // Safety net: ensure no lingering python process blocks future builds
-            bat 'taskkill /f /im python.exe || exit 0'
+            echo 'Taskflow pipeline failed during execution.'
         }
     }
 }
