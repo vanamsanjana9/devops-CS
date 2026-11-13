@@ -1,0 +1,92 @@
+TASKFLOW AGENTIC AI RULES
+=========================
+
+These rules describe the Agentic AI task-planning feature implemented by the
+active dashboard API at POST /api/ai/agent. This feature uses deterministic
+application logic; it does not send the user's prompt to an AI model.
+
+Request rules
+-------------
+- The prompt must be a string containing 1 to 500 characters after trimming.
+- The request may include projectId, teamId, role, and email to scope the plan.
+- If projectId or teamId is supplied, only matching tasks are considered.
+- Guide requests are limited to teams assigned to that guide.
+- Student requests are limited to tasks assigned to that student.
+
+Task eligibility
+----------------
+- Consider only open, assigned tasks.
+- Exclude completed tasks and tasks whose assignment status is Queued.
+- Exclude follow-up tasks and source tasks that already have an active
+  follow-up.
+- Sort eligible tasks by due date, earliest first.
+
+How the request is interpreted
+------------------------------
+Prompt matching is case-insensitive and uses these keywords:
+
+- Progress/blocker/blocked: choose tasks below 60% complete or marked At Risk.
+- Due/deadline/overdue/schedule: choose tasks due within 7 days, including
+  overdue tasks.
+- Risk/urgent/attention/priority: choose At Risk, overdue, or High-priority
+  tasks.
+- Milestone/weekly/week/deliverable/submission: choose tasks with an
+  unchecked milestone.
+- Other prompts: choose At Risk or overdue tasks, or High-priority tasks due
+  within 3 days. If none qualify, broaden the search to open tasks due within
+  7 days.
+
+Recommendations
+---------------
+- Generate recommendations for no more than 3 tasks.
+- Do not automatically save recommendations as tasks. The API responds with
+  the plan and an empty tasks array.
+- Each recommendation identifies the task and its assignee/team, gives a
+  reason based on task status/progress/deadline/milestone, and sets priority
+  to High for At Risk or overdue tasks; otherwise use Medium.
+- Set suggested follow-up dates to one, two, and three days from today in
+  recommendation order. If a date is a configured public holiday, move it
+  forward to the next non-holiday date.
+- If no eligible tasks match, return a summary explaining that there are no
+  urgent follow-ups to consider.
+
+Deadline monitoring and notifications
+-------------------------------------
+- Deadline alerts are calculated from current task data when the dashboard
+  requests its notification summary. The code does not run a separate
+  background deadline-monitoring job.
+- Non-completed tasks are reported as overdue when their due date has passed.
+- Tasks due within the next 3 days receive a due-soon alert.
+- Tasks marked At Risk receive an at-risk alert. A task due within 3 days and
+  below 60% progress is also flagged as at risk.
+- Students see alerts for their assigned tasks, guides see alerts for teams
+  they guide, and coordinators see project-scoped alerts.
+- Notification summaries return at most 10 entries. They can also include
+  role-specific review, feedback, and uploaded-document alerts.
+- Other task events (such as feedback or team assignment) add notification
+  text to dashboard state. Dashboard messages and notifications are persisted
+  in MongoDB.
+
+Task assignment
+---------------
+- Team setup requires one valid guide and exactly three different valid
+  student accounts. A student already assigned to a team cannot be selected
+  again.
+- The weekly milestone queue creates up to 14 tasks per team. The first
+  milestone is initially assigned to the first student; later milestones are
+  queued.
+- Queue reconciliation assigns the next eligible milestone task and marks it
+  active. Later tasks remain queued until the earlier work/review permits the
+  queue to advance. Assignment details are synchronized with the team's
+  student roster.
+- Agentic AI follow-up recommendations identify the existing task assignee,
+  but do not assign or create tasks. Applying a recommendation requires a
+  separate task-management action.
+
+Not included
+------------
+- This feature does not conduct free-form AI conversation or answer general
+  questions. The prompt only selects predefined task-analysis behavior.
+- It does not create, assign, or persist follow-up tasks.
+- The separate OpenAI-backed task-generation/progress-analysis controller is
+  not the implementation used by the active dashboard Agentic AI endpoint.

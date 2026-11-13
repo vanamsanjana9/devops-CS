@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: selenium-chrome
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: selenium-chrome
+  template:
+    metadata:
+      labels:
+        app: selenium-chrome
+    spec:
+      containers:
+      - name: chrome
+        image: selenium/standalone-chrome:latest
+        ports:
+        - containerPort: 4444
+        resources:
+          limits:
+            memory: 2Gi
+          requests:
+            memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: selenium-service
+spec:
+  selector:
+    app: selenium-chrome
+  ports:
+    - protocol: TCP
+      port: 4444
+      targetPort: 4444
